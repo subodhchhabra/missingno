@@ -23,8 +23,7 @@ def _descending_sort(df):
 
 def nullity_sort(df, sort=None):
     """
-    Conglomerate method for sorting a DataFrame.
-    Calls on the above functions to achieve its purpose.
+    Sorts a DataFrame according to its nullity, in either ascending or descending order.
 
     :param df: The DataFrame object being sorted.
     :param sort: The sorting method: either "ascending", "descending", or None (default).
@@ -72,16 +71,19 @@ def _p_bottom_complete_filter(df, p):
 
 def nullity_filter(df, filter=None, p=0, n=0):
     """
-    Conglomerate method for filtering a DataFrame. Percentage and numerical filter values may be specified
-    simultaneously.
+    Filters a DataFrame according to its nullity, using some combination of 'top' and 'bottom' numerical and
+    percentage values. Percentages and numerical thresholds can be specified simultaneously: for example,
+    to get a DataFrame with columns of at least 75% completeness but with no more than 5 columns, use
+    `nullity_filter(df, filter='top', p=.75, n=5)`.
 
     :param df: The DataFrame whose columns are being filtered.
     :param filter: The orientation of the filter being applied to the DataFrame. One of, "top", "bottom",
-    or None (default).
+    or None (default). The filter will simply return the DataFrame if you leave the filter argument unspecified or
+    as None.
     :param p: A completeness ratio cut-off. If non-zero the filter will limit the DataFrame to columns with at least p
     completeness. Input should be in the range [0, 1].
     :param n: A numerical cut-off. If non-zero no more than this number of columns will be returned.
-    :return: The nullity-filtered DataFrame.
+    :return: The nullity-filtered `DataFrame`.
     """
     _df = df
     if filter == "top":
@@ -97,27 +99,36 @@ def nullity_filter(df, filter=None, p=0, n=0):
     return _df
 
 
-def _set_font_size(fig, df, fontsize):
-    """
-    Guesses an appropriate fontsize for the given columnar visualization text labels.
-    Used if a fontsize is not provided via a parameter.
-    """
-    if fontsize:
-        return fontsize
-    else:
-        return min(int((fig.get_size_inches()[1] * 0.8) * fig.dpi / len(df.columns) - 5), 20)
+# def _set_font_size(fig, df, fontsize):
+#     """
+#     Guesses an appropriate fontsize for the given columnar visualization text labels.
+#     Used if a fontsize is not provided via a parameter.
+#     """
+#     if fontsize:
+#         return fontsize
+#     else:
+#         return max(min(20, int((fig.get_size_inches()[1] * 0.7) * fig.dpi / len(df.columns))), 16)
 
 
 def matrix(df,
-           filter=None, n=0, p=0,
-           sort=None,
-           figsize=(20, 10), width_ratios=(15, 1), color=(0.25, 0.25, 0.25),
-           fontsize=0, labels=True, sparkline=True, inline=True
+           filter=None, n=0, p=0, sort=None,
+           figsize=(25, 10), width_ratios=(15, 1), color=(0.25, 0.25, 0.25),
+           fontsize=16, labels=None, sparkline=True, inline=True, flip=None
            ):
     """
+    Presents a `matplotlib` matrix visualization of the nullity of the given DataFrame.
+    
+    Note that for the default `figsize` 250 is a soft display limit: specifying a number of records greater than
+    approximately this value will cause certain records to show up in the sparkline but not in the matrix, which can
+    be confusing.
+    
+    
+    The default vertical display will fit up to 50 columns. If more than 50 columns are specified and the labels
+    parameter is left unspecified the visualization will automatically drop the labels as they will not be very
+    readable. You can override this behavior using `labels=True` and your own `fontsize` parameter.
+
+    
     :param df: The DataFrame whose completeness is being nullity matrix mapped.
-    :param inline: Whether or not to display the plot. If this is set to False (it is True by default), instead of
-    displaying the plot missingno will return its figure.
     :param filter: The filter to apply to the heatmap. Should be one of "top", "bottom", or None (default). See
     `nullity_filter()` for more information.
     :param n: The cap on the number of columns to include in the filtered DataFrame. See  `nullity_filter()` for
@@ -126,16 +137,21 @@ def matrix(df,
     more information.
     :param sort: The sort to apply to the heatmap. Should be one of "ascending", "descending", or None. See
     `nullity_sort()` for more information.
-    :param figsize: The size of the figure to display. This is a `matplotlib` parameter which defaults to (20, 10).
-    :param fontsize: The figure's font size.
+    :param figsize: The size of the figure to display. This is a `matplotlib` parameter.
+    For the vertical configuration this defaults to (20, 10); the horizontal configuration computes a sliding value
+    by default based on the number of columns that need to be displayed.
+    :param fontsize: The figure's font size. This default to 16.
     :param labels: Whether or not to display the column names. Would need to be turned off on particularly large
     displays. Defaults to True.
     :param sparkline: Whether or not to display the sparkline. Defaults to True.
     :param width_ratios: The ratio of the width of the matrix to the width of the sparkline. Defaults to `(15,
     1)`. Does nothing if `sparkline=False`.
     :param color: The color of the filled columns. Default is a medium dark gray: the RGB multiple `(0.25, 0.25, 0.25)`.
-    :return: If `inline=True` this method does not return anything. If `inline=False`, returns the underlying
-    `matplotlib.figure`.
+    :param flip: The default matrix orientation is top-down, with column on the vertical and rows on the horizontal---
+    just like a table. However, for large displays (> 50 by default) display in this format becomes uncomfortable, so
+    the display gets flipped. This parameter is specified to be True if there are more than 50 columns and False
+    otherwise.
+    :return: Returns the underlying `matplotlib.figure` object.
     """
     # Apply filters and sorts.
     df = nullity_filter(df, filter=filter, n=n, p=p)
@@ -146,15 +162,17 @@ def matrix(df,
 
     # z is the color-mask array.
     z = df.notnull().values
-
+    
     # g is a NxNx3 matrix
     g = np.zeros((height, width, 3))
 
     # Apply the z color-mask to set the RGB of each pixel.
     g[z < 0.5] = [1, 1, 1]
     g[z > 0.5] = color
-
+        
     # Set up the matplotlib grid layout.
+    # If the sparkline is removed the layout is a unary subplot.
+    # If the sparkline is included the layout is a left-right subplot.
     fig = plt.figure(figsize=figsize)
     if sparkline:
         gs = gridspec.GridSpec(1, 2, width_ratios=width_ratios)
@@ -167,7 +185,7 @@ def matrix(df,
     ax0.imshow(g, interpolation='none')
 
     # Set fontsize.
-    fontsize = _set_font_size(fig, df, fontsize)
+    # fontsize = _set_font_size(fig, df, fontsize)
 
     # Remove extraneous default visual elements.
     ax0.set_aspect('auto')
@@ -181,7 +199,9 @@ def matrix(df,
     ax0.spines['left'].set_visible(False)
 
     # Set up and rotate the column ticks.
-    if labels:
+    # The labels argument is set to None by default. If the user specifies it in the argument,
+    # respect that specification. Otherwise display for <= 50 columns and do not display for > 50.
+    if labels or (labels == None and len(df.columns) <= 50):
         ha = 'left'
         ax0.set_xticks(list(range(0, width)))
         ax0.set_xticklabels(list(df.columns), rotation=45, ha=ha, fontsize=fontsize)
@@ -190,7 +210,7 @@ def matrix(df,
 
     # Set up the two top-bottom row ticks.
     ax0.set_yticks([0, df.shape[0] - 1])
-    ax0.set_yticklabels([1, df.shape[0]], fontsize=20)
+    ax0.set_yticklabels([1, df.shape[0]], fontsize=20, rotation=0)
     # Create the inter-column vertical grid.
     in_between_point = [x + 0.5 for x in range(0, width - 1)]
     for in_between_point in in_between_point:
@@ -268,12 +288,15 @@ def matrix(df,
 
 def heatmap(df, inline=True,
             filter=None, n=0, p=0, sort=None,
-            figsize=(20, 12), fontsize=0, labels=True, cmap='RdBu'
+            figsize=(20, 12), fontsize=16, labels=True, cmap='RdBu'
             ):
     """
+    Presents a `seaborn` heatmap visualization of nullity correlation in the given DataFrame.
+    
+    Note that this visualization has no special support for large datasets. For those, try the dendrogram instead.
+    
+
     :param df: The DataFrame whose completeness is being heatmapped.
-    :param inline: Whether or not to display the plot. If this is set to False (it is True by default), instead of
-    displaying the plot missingno will return its figure.
     :param filter: The filter to apply to the heatmap. Should be one of "top", "bottom", or None (default). See
     `nullity_filter()` for more information.
     :param n: The cap on the number of columns to include in the filtered DataFrame. See  `nullity_filter()` for
@@ -286,8 +309,7 @@ def heatmap(df, inline=True,
     :param fontsize: The figure's font size.
     :param labels: Whether or not to label each matrix entry with its correlation (default is True).
     :param cmap: What `matplotlib` colormap to use. Defaults to `RdBu`.
-    :return: If `inline=True` this method does not return anything. If `inline=False`, returns the underlying
-    `matplotlib.figure`.
+    :return: Returns the underlying `matplotlib.figure` object.
     """
     # Apply filters and sorts.
     df = nullity_filter(df, filter=filter, n=n, p=p)
@@ -309,7 +331,7 @@ def heatmap(df, inline=True,
     mask[np.triu_indices_from(mask)] = True
 
     # Set fontsize.
-    fontsize = _set_font_size(fig, df, fontsize)
+    # fontsize = _set_font_size(fig, df, fontsize)
 
     # Construct the base heatmap.
     if labels:
@@ -320,6 +342,7 @@ def heatmap(df, inline=True,
 
     # Apply visual corrections and modifications.
     ax0.set_xticklabels(ax0.xaxis.get_majorticklabels(), rotation=45, ha='left', fontsize=fontsize)
+    ax0.set_yticklabels(ax0.yaxis.get_majorticklabels(), fontsize=fontsize, rotation=0)
     ax0.set_yticklabels(ax0.yaxis.get_majorticklabels(), rotation=0, fontsize=fontsize)
 
     ax0.xaxis.tick_top()
@@ -341,24 +364,27 @@ def heatmap(df, inline=True,
         else:
             text.set_text(round(t, 1))
 
-    # Plot if inline, return the figure if not.
     if inline:
         plt.show()
     else:
         return fig
 
-
-def dendrogram(df, method='average', inline=True,
+    
+def dendrogram(df, method='average',
                filter=None, n=0, p=0, sort=None,
-               orientation=None, figsize=(25, 10),
-               fontsize=0
+               orientation=None, figsize=None,
+               fontsize=16, inline=True
                ):
     """
+    Fits a `scipy` hierarchical clustering algorithm to the given DataFrame's variables and visualizes the results as
+    a `scipy` dendrogram.
+    
+    The default vertical display will fit up to 50 columns. If more than 50 columns are specified and orientation is
+    left unspecified the dendrogram will automatically swap to a horizontal display to fit the additional variables.
+
     :param df: The DataFrame whose completeness is being dendrogrammed.
     :param method: The distance measure being used for clustering. This is a parameter that is passed to 
     `scipy.hierarchy`.
-    :param inline: Whether or not to display the plot. If this is set to False (it is True by default), instead of 
-    displaying the plot missingno will return its figure.
     :param filter: The filter to apply to the heatmap. Should be one of "top", "bottom", or None (default). See
     `nullity_filter()` for more information.
     :param n: The cap on the number of columns to include in the filtered DataFrame. See  `nullity_filter()` for
@@ -371,9 +397,15 @@ def dendrogram(df, method='average', inline=True,
     :param fontsize: The figure's font size.
     :param orientation: The way the dendrogram is oriented. Defaults to top-down if there are less than or equal to 50
     columns and left-right if there are more.
-    :return: If `inline=True` this method does not return anything. If `inline=False`, returns the underlying
-    `matplotlib.figure`.
+    :return: Returns the underlying `matplotlib.figure` object.
     """
+    # Figure out the appropriate figsize.
+    if not figsize:
+        if len(df.columns) <= 50 or orientation == 'top' or orientation == 'bottom':
+            figsize = (25, 10)
+        else:
+            figsize = (25, (25 + len(df.columns) - 50)*0.5)
+    
     # Set up the figure.
     fig = plt.figure(figsize=figsize)
     gs = gridspec.GridSpec(1, 1)
@@ -384,10 +416,10 @@ def dendrogram(df, method='average', inline=True,
     df = nullity_sort(df, sort=sort)
 
     # Set font size.
-    if orientation == 'top' or orientation == 'bottom':
-        fontsize = _set_font_size(fig, df, fontsize)
-    else:
-        fontsize = 20
+    # if orientation == 'top' or orientation == 'bottom':
+    #     fontsize = _set_font_size(fig, df, fontsize)
+    # else:
+    #     fontsize = 20
 
     # Link the hierarchical output matrix.
     x = np.transpose(df.isnull().astype(int).values)
@@ -433,7 +465,6 @@ def dendrogram(df, method='average', inline=True,
     else:
         ax0.tick_params(axis='x', labelsize=20)
 
-    # Plot if inline, return the figure if not.
     if inline:
         plt.show()
     else:
